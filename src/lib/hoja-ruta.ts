@@ -41,6 +41,8 @@ export type PedidoHojaRuta = {
   cantidadDeBultos: number | null;
 };
 
+export type PedidoConHoja = PedidoHojaRuta & { noHojaRuta: string };
+
 const HOJA_RUTA_COLUMNS = `
   noHojaRuta,
   fechaPlanificacionTransporte,
@@ -112,46 +114,63 @@ export async function getHojasRutaPorNumeros(
 }
 
 /**
- * Pedidos de una hoja de ruta cuyo cliente coincide con el texto buscado
- * (código o nombre), agrupados por noPedido — una misma orden puede tener
- * varias líneas (bultos/cajas distintas) en linHojaDeRutaReg.
+ * Pedidos de un cliente (código o nombre) dentro de cualquiera de las hojas
+ * de ruta indicadas, agrupados por (noHojaRuta, noPedido) — un mismo pedido
+ * puede tener varias líneas (bultos/cajas distintas) en linHojaDeRutaReg, y
+ * un mismo cliente puede tener pedidos en más de una hoja de ruta el mismo
+ * día.
  */
-export async function getPedidosPorHojaYCliente(
-  noHojaRuta: string,
+export async function getPedidosPorClienteEnHojas(
+  noHojasRuta: string[],
   clienteQuery: string
-): Promise<PedidoHojaRuta[]> {
-  return queryReadOnly<PedidoHojaRuta>(
-    `select ${PEDIDO_COLUMNS}
-     from linHojaDeRutaReg
-     where noHojaRuta = @noHojaRuta
-       and noPedido <> ''
-       and (codCliente like @clienteQuery or nombreCliente like @clienteQuery)
-     group by noPedido
-     order by noPedido`,
-    { noHojaRuta, clienteQuery: `%${clienteQuery}%` }
-  );
-}
+): Promise<PedidoConHoja[]> {
+  if (noHojasRuta.length === 0) return [];
 
-/** Pedidos puntuales de una hoja de ruta por número exacto (para confirmar entregas). */
-export async function getPedidosPorNumeros(
-  noHojaRuta: string,
-  noPedidos: string[]
-): Promise<PedidoHojaRuta[]> {
-  if (noPedidos.length === 0) return [];
-
-  const inputs: Record<string, unknown> = { noHojaRuta };
-  const placeholders = noPedidos.map((noPedido, i) => {
-    const key = `np${i}`;
-    inputs[key] = noPedido;
+  const inputs: Record<string, unknown> = {
+    clienteQuery: `%${clienteQuery}%`,
+  };
+  const placeholders = noHojasRuta.map((noHojaRuta, i) => {
+    const key = `hr${i}`;
+    inputs[key] = noHojaRuta;
     return `@${key}`;
   });
 
-  return queryReadOnly<PedidoHojaRuta>(
-    `select ${PEDIDO_COLUMNS}
+  return queryReadOnly<PedidoConHoja>(
+    `select noHojaRuta, ${PEDIDO_COLUMNS}
      from linHojaDeRutaReg
-     where noHojaRuta = @noHojaRuta
-       and noPedido in (${placeholders.join(", ")})
-     group by noPedido`,
+     where noHojaRuta in (${placeholders.join(", ")})
+       and noPedido <> ''
+       and (codCliente like @clienteQuery or nombreCliente like @clienteQuery)
+     group by noHojaRuta, noPedido
+     order by noHojaRuta, noPedido`,
+    inputs
+  );
+}
+
+/**
+ * Pedidos puntuales por par (noHojaRuta, noPedido) exacto — para releer del
+ * ERP los datos autoritativos (cliente, dirección) de una selección hecha en
+ * la UI, que puede combinar pedidos de distintas hojas de ruta.
+ */
+export async function getPedidosPorParesHojaPedido(
+  pares: { noHojaRuta: string; noPedido: string }[]
+): Promise<PedidoConHoja[]> {
+  if (pares.length === 0) return [];
+
+  const inputs: Record<string, unknown> = {};
+  const condiciones = pares.map((par, i) => {
+    const hojaKey = `h${i}`;
+    const pedidoKey = `p${i}`;
+    inputs[hojaKey] = par.noHojaRuta;
+    inputs[pedidoKey] = par.noPedido;
+    return `(noHojaRuta = @${hojaKey} and noPedido = @${pedidoKey})`;
+  });
+
+  return queryReadOnly<PedidoConHoja>(
+    `select noHojaRuta, ${PEDIDO_COLUMNS}
+     from linHojaDeRutaReg
+     where ${condiciones.join(" or ")}
+     group by noHojaRuta, noPedido`,
     inputs
   );
 }

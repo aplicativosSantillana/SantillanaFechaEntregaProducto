@@ -14,6 +14,9 @@ App interna de Santillana para gestión de fechas de entrega. Dos bases de datos
 - Clientes Supabase: `src/lib/supabase/client.ts` (Client Components), `src/lib/supabase/server.ts` (Server Components/Actions).
 - Server Actions de auth: `src/app/login/actions.ts` (`login`, `logout`).
 
+#  tipo de Aplicacion
+la aplicacion debe de ser responsiva para poder  verse por movil, tableta, browser.
+
 # Gotcha importante: ubicación de proxy.ts
 
 Next.js 16 renombró `middleware.ts` a `proxy.ts` (deprecation notice en `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`). Como este proyecto usa layout `src/` (el directorio `app/` vive en `src/app/`), **`proxy.ts` debe estar en `src/proxy.ts`, no en la raíz del repo** — Next.js exige que esté al mismo nivel que `app/`. Ponerlo en la raíz falla en silencio: compila sin error pero el archivo nunca se ejecuta (no aparece "proxy.ts" en los logs de tiempo de request). Si mueves o creas archivos de convención de Next.js (`proxy.ts`, `instrumentation.ts`, etc.), verifica primero dónde vive `app/`.
